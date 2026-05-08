@@ -1,0 +1,41 @@
+name: Build QuizSimulator
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:   # permette di avviare la build manualmente dal sito
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: QuizSimulator-linux
+            exe_path: dist/QuizSimulator
+          - os: windows-latest
+            artifact_name: QuizSimulator-windows
+            exe_path: dist/QuizSimulator.exe
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pandas openpyxl pyinstaller
+
+      - name: Build executable
+        run: python build.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.exe_path }}
