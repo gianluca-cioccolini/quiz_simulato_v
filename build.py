@@ -33,7 +33,7 @@ print("=" * 60)
 result = subprocess.run(cmd, cwd=os.path.dirname(os.path.abspath(__file__)))
 
 if result.returncode == 0:
-    print("\n✅  Build completata!")
+    print("\n Build completata!")
     print(f"   Eseguibile nella cartella: dist/")
 else:
     print("\n❌  Build fallita. Controlla l'output sopra.")
