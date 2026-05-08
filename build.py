@@ -36,5 +36,5 @@ if result.returncode == 0:
     print("\n Build completata!")
     print(f"   Eseguibile nella cartella: dist/")
 else:
-    print("\n❌  Build fallita. Controlla l'output sopra.")
+    print("\n  Build fallita. Controlla l'output sopra.")
     sys.exit(1)
