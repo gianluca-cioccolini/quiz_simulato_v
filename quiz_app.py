@@ -201,9 +201,9 @@ class QuizScreen(tk.Frame):
 
     # ── layout ─────────────────────────────────────────────────────────────
     def _build(self):
-        # header
+        # ── header fisso in cima ────────────────────────────────────────────
         hdr = tk.Frame(self, bg=CARD_BG, pady=12)
-        hdr.pack(fill="x")
+        hdr.pack(fill="x", side="top")
 
         left = tk.Frame(hdr, bg=CARD_BG)
         left.pack(side="left", padx=20)
@@ -230,35 +230,66 @@ class QuizScreen(tk.Frame):
         self.pb = ttk.Progressbar(self, variable=self.pb_var,
                                    style="Quiz.Horizontal.TProgressbar",
                                    maximum=len(self.questions))
-        self.pb.pack(fill="x", padx=0)
+        self.pb.pack(fill="x", side="top")
 
-        # corpo domanda
-        self.body = tk.Frame(self, bg=BG)
-        self.body.pack(fill="both", expand=True, padx=40, pady=30)
+        # ── barra inferiore fissa con bottone ───────────────────────────────
+        self.bottom_bar = tk.Frame(self, bg=CARD_BG, pady=10)
+        self.bottom_bar.pack(fill="x", side="bottom")
+
+        # badge tipo risposta (mostrato dopo la scelta)
+        self.result_badge = tk.Label(self.bottom_bar, text="", font=FONT_H2,
+                                     bg=CARD_BG, fg=WHITE, padx=16)
+        self.result_badge.pack(side="left", padx=(20, 0))
+
+        self.next_btn = HoverButton(self.bottom_bar, text="Prossima  →",
+                                    command=self._next, pady=8, padx=28)
+        self.next_btn.pack(side="right", padx=20)
+        self.next_btn.pack_forget()
+
+        # ── area scrollabile ────────────────────────────────────────────────
+        self._canvas = tk.Canvas(self, bg=BG, highlightthickness=0)
+        self._scrollbar = ttk.Scrollbar(self, orient="vertical",
+                                        command=self._canvas.yview)
+        self._canvas.configure(yscrollcommand=self._scrollbar.set)
+
+        self._scrollbar.pack(side="right", fill="y")
+        self._canvas.pack(side="left", fill="both", expand=True)
+
+        self.body = tk.Frame(self._canvas, bg=BG)
+        self._canvas_window = self._canvas.create_window(
+            (0, 0), window=self.body, anchor="nw"
+        )
+
+        self.body.bind("<Configure>", self._on_body_configure)
+        self._canvas.bind("<Configure>", self._on_canvas_configure)
+        self._canvas.bind_all("<MouseWheel>", self._on_mousewheel)
 
         # numero domanda + testo
         self.q_num_label = tk.Label(self.body, text="", font=FONT_SMALL,
                                     bg=BG, fg=TEXT_DIM)
-        self.q_num_label.pack(anchor="w")
+        self.q_num_label.pack(anchor="w", padx=40, pady=(24, 0))
 
         self.q_text = tk.Label(self.body, text="", font=FONT_H2,
-                               bg=BG, fg=WHITE, wraplength=700,
+                               bg=BG, fg=WHITE, wraplength=680,
                                justify="left")
-        self.q_text.pack(anchor="w", pady=(4, 24))
+        self.q_text.pack(anchor="w", padx=40, pady=(4, 20))
 
         # frame risposte
         self.ans_frame = tk.Frame(self.body, bg=BG)
-        self.ans_frame.pack(fill="x")
+        self.ans_frame.pack(fill="x", padx=40)
 
-        # area feedback (nascosta inizialmente)
+        # area feedback (sotto le risposte, nello scroll)
         self.feedback_frame = tk.Frame(self.body, bg=BG)
-        self.feedback_frame.pack(fill="x", pady=(20, 0))
+        self.feedback_frame.pack(fill="x", padx=40, pady=(16, 24))
 
-        # bottone avanti
-        self.next_btn = HoverButton(self, text="Prossima  →", command=self._next,
-                                    pady=10, padx=30)
-        self.next_btn.pack(pady=20)
-        self.next_btn.pack_forget()
+    def _on_body_configure(self, event):
+        self._canvas.configure(scrollregion=self._canvas.bbox("all"))
+
+    def _on_canvas_configure(self, event):
+        self._canvas.itemconfig(self._canvas_window, width=event.width)
+
+    def _on_mousewheel(self, event):
+        self._canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     # ── mostra domanda ──────────────────────────────────────────────────────
     def _show_question(self):
@@ -268,6 +299,9 @@ class QuizScreen(tk.Frame):
         for w in self.feedback_frame.winfo_children():
             w.destroy()
         self.next_btn.pack_forget()
+        self.result_badge.config(text="")
+        # torna in cima
+        self._canvas.yview_moveto(0)
 
         q = self.questions[self.idx]
 
@@ -340,78 +374,87 @@ class QuizScreen(tk.Frame):
         # in studio non arriva qui (bottoni disabilitati)
 
     def _show_feedback(self, chosen_key):
-        """Colora i bottoni e mostra il riquadro feedback."""
+        """Colora i bottoni, mostra feedback inline e aggiorna badge in basso."""
         q = self.questions[self.idx]
 
         color_key = {"efficace": GREEN,    "media": YELLOW,     "non_efficace": RED}
         dark_key  = {"efficace": GREEN_DK, "media": YELLOW_DK,  "non_efficace": RED_DK}
         mid_key   = {"efficace": GREEN_MID,"media": YELLOW_MID, "non_efficace": RED_MID}
         label_key = {
-            "efficace":    "✅ Risposta Efficace (+1 pt)",
-            "media":       "⚡ Risposta Mediamente Efficace (+0.5 pt)",
-            "non_efficace":"❌ Risposta Non Efficace (+0 pt)",
+            "efficace":    "✅ Efficace",
+            "media":       "⚡ Mediamente efficace",
+            "non_efficace":"❌ Non efficace",
         }
+        pts_key = {"efficace": "+1 pt", "media": "+0.5 pt", "non_efficace": "+0 pt"}
 
-        # colora i pulsanti
+        # colora i pulsanti risposta
         for k, frame in self._btn_refs.items():
             if k == chosen_key:
-                bg = mid_key[k]
-                fg = WHITE
+                bg, fg = mid_key[k], WHITE
             else:
-                bg = dark_key[k]
-                fg = color_key[k]
+                bg, fg = dark_key[k], color_key[k]
             frame.config(bg=bg)
             for child in frame.winfo_children():
                 child.config(bg=bg, fg=fg)
 
-        # disabilita click in ogni caso
+        # disabilita tutti i click/hover
         for k, frame in self._btn_refs.items():
-            frame.unbind("<Button-1>")
-            frame.unbind("<Enter>")
-            frame.unbind("<Leave>")
-            for w in frame.winfo_children():
+            for w in [frame] + list(frame.winfo_children()):
                 w.unbind("<Button-1>")
                 w.unbind("<Enter>")
                 w.unbind("<Leave>")
 
-        # feedback box
+        # aggiorna punteggio
         if chosen_key:
             pts = self.SCORE_MAP[chosen_key]
             self.score += pts
             self.answers.append((q, chosen_key))
             self.score_label.config(text=f"{self.score:.1f}")
-            fb_bg = dark_key[chosen_key]
-            col   = color_key[chosen_key]
-            label = label_key[chosen_key]
+            badge_col  = color_key[chosen_key]
+            badge_text = f"{label_key[chosen_key]}  {pts_key[chosen_key]}"
         else:
             self.answers.append((q, None))
-            fb_bg = ACCENT_DK
-            col   = ACCENT
-            label = "📖 Modalità Studio – Osserva le risposte"
+            badge_col  = ACCENT
+            badge_text = "📖 Modalità Studio"
 
-        fb = tk.Frame(self.feedback_frame, bg=fb_bg, padx=16, pady=12)
-        fb.pack(fill="x")
-        tk.Label(fb, text=label, font=FONT_H2, bg=fb_bg, fg=col).pack(anchor="w")
-
-        # rows = [
-        #     (GREEN,  "✅ Efficace",           q["efficace"]),
-        #     (YELLOW, "⚡ Mediamente efficace", q["media"]),
-        #     (RED,    "❌ Non efficace",         q["non_efficace"]),
-        # ]
-        # for rc, rl, rt in rows:
-        #     row = tk.Frame(fb, bg=fb_bg)
-        #     row.pack(fill="x", pady=2)
-        #     tk.Label(row, text=rl, font=FONT_SMALL, bg=fb_bg,
-        #              fg=rc, width=24, anchor="w").pack(side="left")
-        #     tk.Label(row, text=rt, font=FONT_SMALL, bg=fb_bg,
-        #              fg=TEXT, wraplength=520, justify="left").pack(side="left")
-
-        # bottone avanti / fine
+        # ── badge nella barra fissa in basso ────────────────────────────────
+        self.result_badge.config(text=badge_text, fg=badge_col)
         if self.idx + 1 < len(self.questions):
             self.next_btn.config(text="Prossima  →")
         else:
             self.next_btn.config(text="Vedi Risultati  🏆")
-        self.next_btn.pack(pady=20)
+        self.next_btn.pack(side="right", padx=20)
+
+        # ── legenda compatta inline (nello scroll, dopo le risposte) ─────────
+        rows = [
+            (GREEN,  GREEN_DK,  "✅ Efficace",           q["efficace"]),
+            (YELLOW, YELLOW_DK, "⚡ Mediamente efficace", q["media"]),
+            (RED,    RED_DK,    "❌ Non efficace",         q["non_efficace"]),
+        ]
+        for rc, rbg, rl, rt in rows:
+            is_chosen = (
+                (rc == GREEN  and chosen_key == "efficace") or
+                (rc == YELLOW and chosen_key == "media")    or
+                (rc == RED    and chosen_key == "non_efficace")
+            )
+            row_bg = mid_key[
+                "efficace" if rc == GREEN else
+                "media"    if rc == YELLOW else
+                "non_efficace"
+            ] if is_chosen else rbg
+
+            row = tk.Frame(self.feedback_frame, bg=row_bg, padx=12, pady=8)
+            row.pack(fill="x", pady=2)
+
+            tk.Label(row, text=rl, font=("Segoe UI", 10, "bold"),
+                     bg=row_bg, fg=rc, width=22, anchor="w").pack(side="left")
+            tk.Label(row, text=rt, font=FONT_SMALL, bg=row_bg,
+                     fg=WHITE if is_chosen else TEXT,
+                     wraplength=560, justify="left").pack(side="left", fill="x", expand=True)
+
+        # scrolla giù per mostrare il feedback
+        self.body.update_idletasks()
+        self._canvas.yview_moveto(1.0)
 
     def _next(self):
         self.idx += 1
